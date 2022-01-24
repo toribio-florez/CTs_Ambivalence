@@ -1,0 +1,66 @@
+---
+title: "poweranalysis_vanharreveldetal2014"
+author: "Daniel Toribio Flórez"
+date: "21/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages:
+
+```{r, include=FALSE}
+library(haven)
+library(psych)
+library(pwr)
+```
+
+Read data set:
+
+```{r}
+df_vanharreveldetal <- read_sav(file = "./data_vanharreveldetal2014.sav")
+```
+
+# Effect sizes of interest:
+
+Estimate effect size of interest and lower bound of 80% CIs to use as reference effect size for a priori safeguard power analyses (Perugini et al. 2014).
+
+### Correlation Subjective Ambivalence (Priester & Petty, 1996) and Conspiracy Beliefs:
+
+```{r}
+eff1 <- cor.test(df_vanharreveldetal$Pettyscale, 
+         df_vanharreveldetal$conspiracyscale,
+         conf.level = .80)
+eff1
+```
+
+Estimate sample size to detect r = `eff1$conf.int[1]`:
+```{r}
+pwr.r.test(n = NULL,
+           r = eff1$conf.int[1],
+           sig.level = .05,
+           power = .95,
+           alternative = "two.sided")
+```
+### Difference between Ambivalence vs. Univalence condition:
+
+```{r}
+t.test(df_vanharreveldetal$conspiracyscale ~ df_vanharreveldetal$condition)
+eff2 <- cohen.d(df_vanharreveldetal$conspiracyscale, df_vanharreveldetal$condition,
+        alpha = 0.2)
+eff2
+```
+Estimate sample size to detect r = `eff2$cohen.d[1]`:
+
+```{r}
+pwr.t.test(n = NULL, 
+           d = eff2$cohen.d[1],
+           sig.level = .05,
+           power = .95,
+           type = "two.sample",
+           alternative = "two.sided"
+           )
+```
+

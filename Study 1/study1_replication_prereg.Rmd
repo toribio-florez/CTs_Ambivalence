@@ -1,0 +1,207 @@
+---
+title: "study1_replication_vanharreveld"
+author: "Daniel Toribio Flórez"
+date: "24/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages:
+
+```{r, include=FALSE}
+library(tidyverse)
+library(psych)
+library(visdat)
+library(DataExplorer)
+library(parameters)
+```
+
+Read data set:
+
+```{r}
+df_study1 <- read_csv2(file = "./study1_replication_vanharreveld.csv") %>% 
+  type_convert(guess_integer = FALSE)
+```
+
+Sanity check: Detect multiple responses from the same Prolific IDs.
+```{r}
+df_study1  %>% 
+  group_by(PROLIFIC_PID) %>% 
+  count() %>% 
+  arrange(desc(n))
+```
+
+Anonymize data, remove unnecessary columns and create ParticipantID:
+```{r}
+df_study1 <- df_study1 %>%
+  mutate(ParticipantID = seq.int(nrow(.))) %>%
+  select(ParticipantID, everything()) %>% 
+  select(-c("IPAddress", "Finished", "RecordedDate", "ResponseId", "RecipientLastName", "Status",
+         "RecipientFirstName", "RecipientEmail", "ExternalReference", "LocationLatitude",
+         "LocationLongitude","DistributionChannel","UserLanguage","PROLIFIC_PID"))
+```
+
+### Exclusion Criteria:
+Number of participants before exclusion criteria:
+```{r}
+before_exclusions <- nrow(df_study1)
+```
+
+Exclude people that did not accept Informed Consent:
+```{r}
+df_study1 <- df_study1 %>%
+  filter(informedconsent == 1)
+
+no_consent <- before_exclusions - nrow(df_study1)
+```
+
+
+Attention checks:
+```{r}
+df_study1 <- df_study1 %>% 
+  filter(AttCheck1 == 1 | AttCheck2 == 1) #That answered correctly at least one Attention check.
+
+fail_attchecks <- before_exclusions - no_consent - nrow(df_study1)
+```
+
+# Variable Type/Recoding:
+
+```{r}
+df_study1 <- df_study1 %>% 
+  mutate(condition = as.factor(condition),
+         condition = fct_relevel(condition, "Univalence")) 
+```
+
+
+## Descriptive exploration of dataset:
+
+### Missing observations
+
+```{r}
+df_study1 %>% vis_miss()
+```
+
+```{r}
+df_study1 %>% plot_missing()
+```
+
+## Answer distributions:
+
+```{r evaluate = FALSE}
+df_study1 %>%
+  select(starts_with("SA_"), starts_with("NegEmo"), starts_with("conspiracy"), Age, Education) %>% 
+    plot_histogram()
+```
+
+## Compute Variables:
+
+### Subjective Ambivalence:
+Internal consistency
+```{r}
+alpha(as.matrix(df_study1[,c("SA_1_1","SA_2_1","SA_3_1")]),na.rm = TRUE)
+```
+Compute average score:
+```{r}
+df_study1 <- df_study1 %>% 
+  mutate(SA = rowMeans(df_study1[,c("SA_1_1","SA_2_1","SA_3_1")],na.rm = TRUE))
+```
+
+### Negative Emotions:
+Internal consistency
+```{r}
+alpha(as.matrix(df_study1[,c("NegEmo_1", "NegEmo_2", "NegEmo_3", "NegEmo_4", "NegEmo_5")]),na.rm = TRUE)
+```
+
+Compute average score:
+```{r}
+df_study1 <- df_study1 %>% 
+  mutate(NegEmo = rowMeans(df_study1[,c("NegEmo_1", "NegEmo_2", "NegEmo_3", "NegEmo_4", "NegEmo_5")],na.rm = TRUE))
+```
+
+### Conspiracy Beliefs:
+Internal consistency
+```{r}
+#Splithalf reliability based on Spearman-Brown prophecy formula: ((2 * r) / (1 + r))
+r <- cor(df_study1[,c("conspiracy_1_1","conspiracy_2_1")],use = "na.or.complete")
+sb_conspiracy <- (2*r[2,1])/(1+r[2,1])
+```
+
+Compute average score:
+```{r}
+df_study1 <- df_study1 %>% 
+  mutate(conspiracy_beliefs = rowMeans(df_study1[,c("conspiracy_1_1","conspiracy_2_1")],na.rm = TRUE))
+```
+
+
+# Analysis
+
+## Manipulation Check:
+
+```{r}
+t.test(df_study1$SA ~ df_study1$condition)
+```
+
+## Main Analyses
+
+### Does the level of conspiracy beliefs differ across experimental conditions?
+
+```{r}
+mod1 <- lm(conspiracy_beliefs ~ condition,
+           df_study1)
+model_parameters(mod1)
+```
+
+**Expected results:**
+
+H1a. Participants in the Ambivalence condition will report higher conspiracy beliefs when interpreting an ambiguous scenario than those in the Univalent condition.
+
+-> Significant positive weight of `condition` term (i.e., significant difference between means).
+
+Calculate Cohen's d:
+```{r}
+cohen.d(df_study1$conspiracy_beliefs, df_study1$condition)
+```
+
+### Does participants' level of reported Subjective Ambivalence predict conspiracy beliefs?
+
+```{r}
+cor.test(df_study1$SA, df_study1$conspiracy_beliefs)
+```
+
+**Expected results:**
+
+H1b. Participants´ self-reported Subjective Ambivalence will positively predict conspiracy beliefs when interpreting ambiguous scenarios.
+
+-> Significant positive correlation between `SA` and `conspiracy_beliefs`.
+
+### Do negative emotions mediate the effect of ambivalence on conspiracy beliefs?
+
+PROCESS macro for mediation analysis do not accept factor variables. Create a numeric version of variable `condition`:
+```{r}
+df_study1 <- df_study1 %>% 
+  mutate(condition_num = as.numeric(recode(condition,
+                                           "Ambivalence" = 1,
+                                           "Univalence" = 0)))
+```
+
+Fit hypothesized mediation model:
+```{r}
+mod_mediation <- process(df_study1,
+        y = "conspiracy_beliefs",
+        x = "condition_num",
+        m = "NegEmo",
+        seed = 1234,
+        model = 4,
+        iterate = 500)
+```
+
+**Expected results:**
+
+H2. Negative emotions will mediate the effect of ambivalence on conspiracy beliefs. 
+
+-> Significant indirect effect of `NegEmo`.
+-> Significant positive effect of `condition_num` on `NegEmo`, and significant positive effect of `NegEmo` on `conspiracy_beliefs`.
+
