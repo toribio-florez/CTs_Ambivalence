@@ -188,6 +188,7 @@ df_study1 <- df_study1 %>%
 ```
 
 Fit hypothesized mediation model:
+NOTE: Download and run the PROCESS macro to use the `process()` function (https://www.processmacro.org/download.html).
 ```{r}
 mod_mediation <- process(df_study1,
         y = "conspiracy_beliefs",
